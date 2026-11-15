@@ -24,14 +24,6 @@ except ImportError:
     os.system(f"{sys.executable} -m pip install yfinance")
     import yfinance as yf
 
-try:
-    import google.generativeai as genai
-except ImportError:
-    print("正在嘗試安裝必要套件: google-generativeai...")
-    os.system(f"{sys.executable} -m pip install google-generativeai")
-    import google.generativeai as genai
-
-
 # ==========================================
 # 3. 股票分析清單（總共 100 檔 2026 市值大盤股）
 # ==========================================
@@ -239,19 +231,26 @@ def calculate_rule1_valuation(data: dict):
     }
 
 
-def generate_gemini_report(data: dict, valuation: dict, api_key: str = None):
+def generate_openai_report(data: dict, valuation: dict, api_key: str = None):
     """
-    4. 整合 Gemini API 生成專家文本報告
+    4. 整合 OpenAI API 生成專家文本報告
     """
     # 優先使用傳入的 API key，否則讀取環境變數
-    actual_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    actual_api_key = api_key or os.environ.get("OPENAI_API_KEY")
     if not actual_api_key:
         # 如果沒配置 API 密鑰，依然輸出靜態 Markdown 估值以防崩潰
-        return generate_static_markdown(data, valuation, "※ 未配置 GEMINI_API_KEY，由系統模板產出精簡報告。")
+        return generate_static_markdown(data, valuation, "※ 未配置 OPENAI_API_KEY，由本機模板產出報告。")
 
     try:
-        # 初始化 Gemini API ── 使用 3.5-flash 作為基本文本生成
-        client = genai.Client(api_key=actual_api_key)
+        try:
+            from openai import OpenAI
+        except ImportError:
+            print("正在嘗試安裝必要套件: openai...")
+            os.system(f"{sys.executable} -m pip install openai")
+            from openai import OpenAI
+
+        # 使用 OpenAI API 生成報告
+        client = OpenAI(api_key=actual_api_key)
         
         # 準備送給 AI 的精準數據背景 (Context)
         context = {
@@ -319,15 +318,20 @@ def generate_gemini_report(data: dict, valuation: dict, api_key: str = None):
  2. 說明：本報告基於 Rule 1 投資法之公式自動化計算，不構成任何實質買賣招攬，投資人應自行審慎評估風險。
 ```
 """
-        response = client.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=prompt,
+        response = client.responses.create(
+            model=os.environ.get("OPENAI_MODEL") or "gpt-6-luna",
+            input=prompt,
         )
-        return response.text
+        report = (response.output_text or "").strip()
+        if not report:
+            raise ValueError("OpenAI returned an empty report")
+        return report
         
     except Exception as e:
         # 降級輸出
-        return generate_static_markdown(data, valuation, f"※ Gemini API 請求失敗 (錯誤原因：{str(e)})。已切換為本地量化套件格式化輸出：")
+        status = getattr(e, "status_code", None)
+        reason = "API key 無效" if status == 401 else "額度不足或請求過多" if status == 429 else "API 暫時不可用或回傳空內容"
+        return generate_static_markdown(data, valuation, f"※ OpenAI 報告產生失敗（{reason}），已切換為本機量化模板。")
 
 
 def generate_static_markdown(data: dict, valuation: dict, alert_msg: str):
@@ -393,7 +397,7 @@ def process_single_stock(symbol: str, api_key: str = None, report_dir: str = "Ru
             return None
             
         # 生成 AI 報告
-        report_content = generate_gemini_report(data, valuation, api_key)
+        report_content = generate_openai_report(data, valuation, api_key)
         
         # 寫入指定的 Rule1_Reports 資料夾
         os.makedirs(report_dir, exist_ok=True)
@@ -423,7 +427,7 @@ def main():
     print("==========================================================")
     
     # 獲取 API KEY
-    api_key = os.environ.get("GEMINI_API_KEY") or input("請輸入您的 GEMINI_API_KEY (可直接 Enter 跳過使用內建模本): ").strip()
+    api_key = os.environ.get("OPENAI_API_KEY") or input("請輸入您的 OPENAI_API_KEY (可直接 Enter 跳過使用本機模板): ").strip()
     
     print("\n[功能選單]")
     print("1. 評估所有台灣前 100 大企業 (這需要一點時間)")

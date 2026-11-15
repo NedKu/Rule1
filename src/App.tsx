@@ -329,7 +329,7 @@ export default function App() {
     
     let timerIdx = 0;
     const reportPhrases = [
-      "正在啟動 Gemini 3.5-flash 量化寫作專家...",
+      "正在啟動 OpenAI 量化寫作專家...",
       "編譯該股歷史與 10 年前景數據快照中...",
       "對比同業 PE 與 Rule 1 合理內在價值估計...",
       "寫作核心結論：金字塔投資法結構排版...",
@@ -860,7 +860,7 @@ export default function App() {
             </div>
           </div>
           <p className={`text-xs mb-3 leading-relaxed ${theme === "dark" ? "text-slate-400" : "text-slate-500"}`}>
-            💡 <strong>使用說明</strong>：此 Python 應用程式能動態調用 <code className="text-teal-555 font-mono">yfinance</code> 來拉取今日股市現價，並結合大盤數據算足複合 CAGR，在終端互動運行，一鍵即可觸發 Gemini 報告並在本地建立資料夾儲存。直接複製或下載可在本機終端機內隨時執行！
+            💡 <strong>使用說明</strong>：此 Python 應用程式能動態調用 <code className="text-teal-555 font-mono">yfinance</code> 來拉取今日股市現價，並結合大盤數據算足複合 CAGR，在終端互動運行，一鍵即可觸發 OpenAI 報告並在本地建立資料夾儲存。請透過 OPENAI_API_KEY 環境變數提供 API key；未設定時使用本機模板。
           </p>
           <pre className={`p-4 rounded-lg overflow-x-auto text-[11px] font-mono border max-h-48 scrollbar-thin ${
             theme === "dark" 
@@ -2594,7 +2594,7 @@ export default function App() {
                     <h3 className={`text-xs font-bold uppercase tracking-wider ${
                       theme === "dark" ? "text-slate-200" : "text-slate-700"
                     }`}>
-                      Gemini 專家 AI 估值分析報告
+                      OpenAI 專家 AI 估值分析報告
                     </h3>
                   </div>
 
@@ -2712,7 +2712,7 @@ export default function App() {
           <div className="pt-4 border-t border-slate-55/10 text-[10px] text-slate-400 flex justify-center gap-4 font-light">
             <span>伺服器：Node.js Express + TSX 核心</span>
             <span>前端：React 19 + Tailwind v4 + Lucide Icons</span>
-            <span>AI 專家：Gemini 3.5-flash 大語言模型</span>
+            <span>AI 專家：OpenAI（預設 gpt-6-luna）</span>
           </div>
         </div>
       </footer>

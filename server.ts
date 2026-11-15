@@ -1,10 +1,11 @@
+import "dotenv/config";
 import express, { Request, Response } from "express";
 import path from "path";
 import dns from "dns";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import yahooFinance from "yahoo-finance2";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { TAIWAN_100_CONSTITUENTS } from "./src/taiwan100Data.ts";
 import { SP500_200_CONSTITUENTS } from "./src/sp500Data.ts";
 
@@ -25,22 +26,15 @@ const yahooFinanceInstance = new (YahooFinanceClass as any)({
   validation: { logErrors: false }
 });
 
-// 延遲初始化 Gemini 進程，防止 runtime/API Key 缺少問題在啟動時崩潰
-let aiInstance: GoogleGenAI | null = null;
-function getGeminiAI(): GoogleGenAI {
+// 延遲初始化，讓未設定 API key 時仍可使用本機量化報告。
+let aiInstance: OpenAI | null = null;
+function getOpenAI(): OpenAI {
   if (!aiInstance) {
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.OPENAI_API_KEY;
     if (!key) {
-      throw new Error("GEMINI_API_KEY is not set or empty in environment. Please supply it.");
+      throw new Error("OPENAI_API_KEY is not set or empty in environment.");
     }
-    aiInstance = new GoogleGenAI({
-      apiKey: key,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+    aiInstance = new OpenAI({ apiKey: key });
   }
   return aiInstance;
 }
@@ -1153,12 +1147,12 @@ app.post("/api/report", async (req: Request, res: Response) => {
 | **🚦 三合一聯動訊號** | 須三者信號皆同向發出才採取進出場操作 | **${technicalTools?.overallSignal}** | ${technicalTools?.overallSignal.includes("買進") ? "🚩 建議配合 MOS 價格分批佈局" : technicalTools?.overallSignal.includes("賣出") ? "⚠️ 注意出場防守訊號" : "⚖️ 保持觀望，與大戶同行"} |
 `;
 
-  const apiKeyToCheck = process.env.GEMINI_API_KEY || "";
+  const apiKeyToCheck = process.env.OPENAI_API_KEY || "";
   // 如果沒有設置金鑰，直接回傳最完整的 Phil Town 特設量化報告
-  if (!apiKeyToCheck || apiKeyToCheck === "MY_GEMINI_API_KEY") {
+  if (!apiKeyToCheck || apiKeyToCheck === "MY_OPENAI_API_KEY") {
     const staticText = `## 📊 ${symbol} (${name}) Rule 1 投資人 Agent 專家報告 (市場：${symbol.endsWith(".TW") ? "台股" : "美股"})
 
-> ⚖️ **投資指南**：本報告由 Phil Town 投資 Agent 量化大腦自動運算產出，完全落實「四 M 分析法」與「五大數據、三大估價、三大技術指標」審查。
+> ⚖️ **投資指南**：未設定 OPENAI_API_KEY，本報告由本機量化模板產出；定性分析需自行查證。
 
 ### 📌 【第一 M】企業意義 (Meaning) 一百載持有考量
 * 該公司的業務模式是否單純易懂？你是否願意不看盤持有 100 年並作為家人的唯一經濟依靠？這檔股票在當前數位/實體產業占有率極高，業務黏著度極強，符合 Meaning 審查標準。
@@ -1277,13 +1271,14 @@ ${context.techTableStr}
 3. **撤退訊號防護**：若 (1) 公司的護城河被破壞，(2) 管理層失去誠信，或 (3) 股價上漲超越合理標價 (Sticker Price) 20% 以上時，應觸發利潤回攏與避險出場。
 `;
 
-    const ai = getGeminiAI();
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
+    const ai = getOpenAI();
+    const response = await ai.responses.create({
+      model: process.env.OPENAI_MODEL || "gpt-6-luna",
+      input: prompt,
     });
 
-    const reportMarkdown = response.text || "";
+    const reportMarkdown = response.output_text?.trim() || "";
+    if (!reportMarkdown) throw new Error("OpenAI returned an empty report");
 
     // 同步將報告寫入 Rule1_Reports 目錄下作為存檔備份
     const sanitizedSymbol = symbol.replace(/[^a-zA-Z0-9.]/g, "_");
@@ -1292,7 +1287,7 @@ ${context.techTableStr}
 
     res.json({ success: true, report: reportMarkdown, static: false });
   } catch (error: any) {
-    console.log("[Status] Utilizing local pre-rendered expert valuation sheet as a high-speed fallback for", symbol);
+    console.error("OpenAI report failed:", error?.status || error?.code || error?.name || "unknown error");
     
     const isCap1cEnabled = cap15 !== false;
     const growthLimitExplanation = isCap1cEnabled 
@@ -1319,7 +1314,7 @@ ${context.techTableStr}
     // Fallback: 產生量化估值報告作為自適應備份
     const fallbackReport = `## 📊 ${symbol} (${name}) Rule 1 估值報告 (市場：${marketTypeStr})
 
-> 💡 **分析導航**：本報告因系統偵測到 AI 雲端伺服器負載較高或配額超限 (429 Rate-Limit)，已自動切換並安全啟用 **本機高精準度量化專家報告**，所有數據、計算公式皆完全吻合且高精準呈現。
+> 💡 **分析導航**：OpenAI 報告產生失敗（${error?.status === 401 ? "API key 無效" : error?.status === 429 ? "額度不足或請求過多" : "API 暫時不可用或回傳空內容"}），已改用本機量化模板。請自行核對數據與定性判斷。
 
 ### 💡 核心結論 (Pyramid Principle)
 * **結論**：目前 ${name} (${symbol}) 市值報價為 **${marketPrefix} ${curPriceStr} 元**，而經由 Rule 1 計算之合理內在價值 (Sticker Price) 為 **${marketPrefix} ${stickPriceStr} 元**。該股當前的收盤價判定處於『**${statusValStr}**』區間。
