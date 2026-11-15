@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Rule 1 投資法 ── 台灣 100 大企業自動化估值與 AI 報告生成系統
+Rule 1 投資法 ── 台灣 100 大企業自動化估值與量化報告系統
 作者：量化交易工程師
 日期：2026-06-20
 """
@@ -231,135 +231,36 @@ def calculate_rule1_valuation(data: dict):
     }
 
 
-def generate_openai_report(data: dict, valuation: dict, api_key: str = None):
+def generate_static_markdown(data: dict, valuation: dict):
     """
-    4. 整合 OpenAI API 生成專家文本報告
+    根據估值結果產生不依賴 AI 的 Markdown 報告。
     """
-    # 優先使用傳入的 API key，否則讀取環境變數
-    actual_api_key = api_key or os.environ.get("OPENAI_API_KEY")
-    if not actual_api_key:
-        # 如果沒配置 API 密鑰，依然輸出靜態 Markdown 估值以防崩潰
-        return generate_static_markdown(data, valuation, "※ 未配置 OPENAI_API_KEY，由本機模板產出報告。")
-
-    try:
-        try:
-            from openai import OpenAI
-        except ImportError:
-            print("正在嘗試安裝必要套件: openai...")
-            os.system(f"{sys.executable} -m pip install openai")
-            from openai import OpenAI
-
-        # 使用 OpenAI API 生成報告
-        client = OpenAI(api_key=actual_api_key)
-        
-        # 準備送給 AI 的精準數據背景 (Context)
-        context = {
-            "symbol": data["symbol"],
-            "name": data["name"],
-            "current_price": data["current_price"],
-            "trailing_eps": data["trailing_eps"],
-            "original_pe": valuation["original_pe"],
-            "calculated_cagr": f"{valuation['cagr']*100:.2f}%",
-            "adopted_growth": f"{valuation['adopted_growth']*100:.2f}%",
-            "future_eps_10y": f"{valuation['future_eps_10y']:.2f}",
-            "future_pe": f"{valuation['future_pe']:.2f}",
-            "sticker_price": f"{valuation['sticker_price']:.2f}",
-            "mos_price": f"{valuation['mos_price']:.2f}",
-            "valuation_status": valuation["valuation_status"],
-            "historical_eps_series": str(data["eps_history"])
-        }
-        
-        prompt = f"""
-你是一位精通 Phil Town 《Rule 1 投資法》與巴菲特價值投資邏輯的首席量化分析師。
-請根據以下提供的真實運算數據 Context，為這檔股票撰寫一份深度、極具專業法人水平的 Rule 1 估值分析與 AI 報告。
-
-數據背景 (Context)：
-{json.dumps(context, ensure_ascii=False, indent=2)}
-
-請「嚴格」按照以下指定的 Markdown 格式輸出報告，不加上任何額外的聊天語氣或廢話。字數大約控制在 500 - 800 字，確保條理極度清晰：
-
-```markdown
-## 📊 [代號] ([公司名稱]) Rule 1 估值報告 (市場：{'台股' if '.TW' in data['symbol'] else '美股'})
-
-### 💡 核心結論 (Pyramid Principle)
- * **結論**：[指出當前股價相較於合理價與安全邊際價的溢折價百分比，並直接給出投資定調。例如：目前現價 {context['current_price']}元，處於『{context['valuation_status']}』區間，安全邊際溢價率為...]
- * **關鍵理由**：[列出 2 個為什麼會呈現上述估值的原因。包含：採用歷史 EPS 複合成長率和當前本益比限制...等]
- * **投資建議**：[根據 Rule 1 的四個護城河 (Moat) 與管理層 (Management)，對這家公司的未來佈局與當下進場策略提出專業建議。]
-
-### ⚠️ 數據確信度與異常警示
- * [分析 historical_eps_series 數據的穩定度。評估是否有股息發放、獲利結構大幅變動，或是 Yahoo Finance 數據是否有缺失或波動較大，給出一個確信度（高、中、低）。]
-
-### 1. 輸入參數與數據驗證
-| 參數 | 數值 | 說明 |
-|---|---|---|
-| 當前股價 (Current Price) | {context['current_price']} | 即時市場交易價格 |
-| 近四季累積 EPS (TTM) | {context['trailing_eps']} | 實時獲利基礎底線 |
-| 歷史 EPS 估算 CAGR | {context['calculated_cagr']} | 歷史基本 EPS 的複合成長率 |
-| 採用成長率 (Adopted Growth) | {context['adopted_growth']} | 經 Rule 1 天花板限制 (上限15%, 下限1%) 後的預測增長率 |
-| 當前本益比 (Current PE) | {context['original_pe']} | 市場當下給予的評價倍數 |
-| 未來預估本益比 (Future PE) | {context['future_pe']} | 本益比 = min(當前PE, 採用成長率 * 200)，且下限15(若計算<8) |
-
-### 2. 計算過程
- * **未來 10 年 EPS** = {context['future_eps_10y']} (採用 {(float(valuation['adopted_growth'])*100):.1f}% 成長率複利 10 年)
- * **未來 PE** = {context['future_pe']}
- * **Sticker Price (合理價)** = {context['sticker_price']} (折現率固設定為 15%)
- * **MOS Price (安全邊際價)** = {context['mos_price']} (Sticker Price * 50%)
-
-### 3. 估值結論
-| 指標 | 數值 | 估值判斷 |
-|---|---|---|
-| 合理估值 (Sticker Price) | NT$ {context['sticker_price']} 元 | Rule 1 中預估的實質價值天花板 |
-| 安全邊際價 (MOS Price) | NT$ {context['mos_price']} 元 | Rule 1 理物理想買點 (50% 打折) |
-| 當前收盤價 (Current Price) | NT$ {context['current_price']} 元 | 目前市場實際股價 |
-| **估值綜合判定** | **{context['valuation_status']}** | 決策：現價 > 合理價 ── 🔴偏高；現價 < 安全價 ── 🟢低估；其餘 ── 🟡合理 |
-
-### 🔗 數據來源與免責聲明
- 1. 臺灣證券交易所 / Yahoo Finance API 實時財報庫
- 2. 說明：本報告基於 Rule 1 投資法之公式自動化計算，不構成任何實質買賣招攬，投資人應自行審慎評估風險。
-```
-"""
-        response = client.responses.create(
-            model=os.environ.get("OPENAI_MODEL") or "gpt-6-luna",
-            input=prompt,
-        )
-        report = (response.output_text or "").strip()
-        if not report:
-            raise ValueError("OpenAI returned an empty report")
-        return report
-        
-    except Exception as e:
-        # 降級輸出
-        status = getattr(e, "status_code", None)
-        reason = "API key 無效" if status == 401 else "額度不足或請求過多" if status == 429 else "API 暫時不可用或回傳空內容"
-        return generate_static_markdown(data, valuation, f"※ OpenAI 報告產生失敗（{reason}），已切換為本機量化模板。")
-
-
-def generate_static_markdown(data: dict, valuation: dict, alert_msg: str):
-    """
-    靜態報告 fallback（保證沒有 API key 也能生成完好的 markdown 投資報告）
-    """
-    c= data["symbol"]
+    c = data["symbol"]
     n = data["name"]
-    return f"""## 📊 {c} ({n}) Rule 1 估值報告 (市場：台股)
+    currency = "NT$" if c.endswith(".TW") else "$"
+    market = "台股" if c.endswith(".TW") else "美股"
+    trailing_eps = data.get("trailing_eps") or 0.0
+    current_pe = valuation.get("original_pe") or 0.0
+    return f"""## 📊 {c} ({n}) Rule 1 估值報告 (市場：{market})
 
-{alert_msg}
+> 本報告依輸入數據與 Rule 1 公式計算，不使用 AI。歷史數據及定性判斷請自行查證。
 
 ### 💡 核心結論 (Pyramid Principle)
- * **結論**：目前 {n} 股價為 NT$ {data['current_price']:.2f} 元，經 Rule 1 估值安全價格為 NT$ {valuation['mos_price']:.2f} 元。目前股價判定為『**{valuation['valuation_status']}**』。
+ * **結論**：目前 {n} 股價為 {currency} {data['current_price']:.2f} 元，經 Rule 1 估值安全價格為 {currency} {valuation['mos_price']:.2f} 元。目前股價判定為『**{valuation['valuation_status']}**』。
  * **關鍵理由**：歷史 EPS 複合增長率為 {valuation['cagr']*100:.2f}%，我們採用的 Rule 1 成長估算值為 {valuation['adopted_growth']*100:.2f}%。折算未來本益比為 {valuation['future_pe']:.1f} 倍。
- * **投資建議**：當前股價為 {valuation['valuation_status']} 狀態下，若為 🔴 偏高建議耐心等待，若為 🟢 則需確認企業核心競爭力（護城河）是否完好，並分批布局。
+ * **定性檢查**：請自行確認企業競爭力、管理層與資料品質；估值結果不能單獨作為買賣依據。
 
 ### ⚠️ 數據確信度與異常警示
- * 歷史 Basic EPS 數值穩定度評估：基於 Yahoo Finance 近年 financials 計算，數據確信度為【中等】。台股近年受地緣政治與全球供應鏈庫存週期影響，部分傳統型工業或非科技類股之盈餘波動較為明顯，估值時應同時監控自由現金流量 (FCF)。
+ * 歷史 EPS：{data.get('eps_history') or '未取得'}。請檢查缺值、異常波動及資料來源；本程式不自動判定資料確信度。
 
 ### 1. 輸入參數與數據驗證
 | 參數 | 數值 | 說明 |
 |---|---|---|
 | 當前股價 (Current Price) | {data['current_price']:.2f} | 即時市場交易價格 |
-| 近四季累積 EPS (TTM) | {data['trailing_eps']:.2f if data['trailing_eps'] else 0.00} | 實時獲利基礎底線 |
+| 近四季累積 EPS (TTM) | {trailing_eps:.2f} | 實時獲利基礎底線 |
 | 歷史 EPS 成長率 (CAGR) | {valuation['cagr']*100:.2f}% | 過去 4 年的 Basic EPS 算術複利 CAGR |
 | 採用成長率 (Adopted Growth) | {valuation['adopted_growth']*100:.2f}% | 限制於 15% 上限與 1% 下限天花板 |
-| 當前本益比 (Current PE) | {valuation['original_pe']:.2f if valuation['original_pe'] else 0.0} | 當前 PE 價格與獲利比 |
+| 當前本益比 (Current PE) | {current_pe:.2f} | 當前 PE 價格與獲利比 |
 
 ### 2. 計算過程
  * **未來 10 年 EPS** = {valuation['future_eps_10y']:.2f} (預期年增長 {valuation['adopted_growth']*100:.1f}%)
@@ -370,18 +271,18 @@ def generate_static_markdown(data: dict, valuation: dict, alert_msg: str):
 ### 3. 估值結論
 | 指標 | 數值 | 估值判斷 |
 |---|---|---|
-| 合理估值 (Sticker Price) | NT$ {valuation['sticker_price']:.2f} 元 | 估算的合理內在價值 |
-| 安全邊際價 (MOS Price) | NT$ {valuation['mos_price']:.2f} 元 | 理想的安全切入點 (Sticker Price * 50%) |
-| 當前收盤價 (Current Price) | NT$ {data['current_price']:.2f} 元 | 市場目前的交易報價 |
+| 合理估值 (Sticker Price) | {currency} {valuation['sticker_price']:.2f} 元 | 估算的合理內在價值 |
+| 安全邊際價 (MOS Price) | {currency} {valuation['mos_price']:.2f} 元 | 理想的安全切入點 (Sticker Price * 50%) |
+| 當前收盤價 (Current Price) | {currency} {data['current_price']:.2f} 元 | 市場目前的交易報價 |
 | **估值綜合判定** | **{valuation['valuation_status']}** | 決策狀態 |
 
 ### 🔗 數據來源
  1. 臺灣證券交易所 / Yahoo Finance API 實時財報庫
- 2. Financial Modeling Prep (FMP) 平台推薦與對接接口。
+ 2. 本報告依 Rule 1 估值公式計算，不構成投資建議。
 """
 
 
-def process_single_stock(symbol: str, api_key: str = None, report_dir: str = "Rule1_Reports"):
+def process_single_stock(symbol: str, report_dir: str = "Rule1_Reports"):
     """
     運算一檔股票，生成 Markdown 報告檔案
     """
@@ -396,8 +297,7 @@ def process_single_stock(symbol: str, api_key: str = None, report_dir: str = "Ru
         if not valuation:
             return None
             
-        # 生成 AI 報告
-        report_content = generate_openai_report(data, valuation, api_key)
+        report_content = generate_static_markdown(data, valuation)
         
         # 寫入指定的 Rule1_Reports 資料夾
         os.makedirs(report_dir, exist_ok=True)
@@ -426,9 +326,6 @@ def main():
     print("  🧮 Rule 1 投資法 ── 台股 100 大企業自動化估值報告系統")
     print("==========================================================")
     
-    # 獲取 API KEY
-    api_key = os.environ.get("OPENAI_API_KEY") or input("請輸入您的 OPENAI_API_KEY (可直接 Enter 跳過使用本機模板): ").strip()
-    
     print("\n[功能選單]")
     print("1. 評估所有台灣前 100 大企業 (這需要一點時間)")
     print("2. 評估自定義個股 (台股範例: 2330.TW, 美股範例: AAPL)")
@@ -443,7 +340,7 @@ def main():
         
         for idx, symbol in enumerate(ALL_STOCKS, 1):
             print(f"[{idx}/{len(ALL_STOCKS)}]", end=" ")
-            res = process_single_stock(symbol, api_key, reports_folder)
+            res = process_single_stock(symbol, reports_folder)
             if res:
                 success_count += 1
                 summary_results.append(res)
@@ -470,7 +367,7 @@ def main():
         if not symbol:
             symbol = "2330.TW"
         print(f"\n正在單獨分析 {symbol} ...")
-        res = process_single_stock(symbol, api_key, reports_folder)
+        res = process_single_stock(symbol, reports_folder)
         if res:
             print("\n================ 分析成功 ================")
             print(f"股票名稱: {res['name']}")

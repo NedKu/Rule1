@@ -329,7 +329,7 @@ export default function App() {
     
     let timerIdx = 0;
     const reportPhrases = [
-      "正在啟動 OpenAI 量化寫作專家...",
+      "正在整理 Rule 1 量化估值結果...",
       "編譯該股歷史與 10 年前景數據快照中...",
       "對比同業 PE 與 Rule 1 合理內在價值估計...",
       "寫作核心結論：金字塔投資法結構排版...",
@@ -337,7 +337,7 @@ export default function App() {
       "撰寫專業風險與護城河 (Moat) 分析提示..."
     ];
     
-    const initialPhrase = "正在喚醒 AI 量化投資專家...";
+    const initialPhrase = "正在整理量化估值報告...";
     setLoadingPhrase(initialPhrase);
     
     const interval = setInterval(() => {
@@ -355,7 +355,7 @@ export default function App() {
       if (data.success) {
         setAiReport(data.report);
       } else {
-        setAiReport(`### ❌ 報告生成出錯\n\n無法串接 AI 伺服器：${data.error}`);
+        setAiReport(`### ❌ 報告生成出錯\n\n伺服器回應：${data.error}`);
       }
     } catch (e: any) {
       setAiReport(`### ❌ 報告生成失敗\n\n網路超時或伺服器無響應：${e.message}`);
@@ -381,7 +381,7 @@ export default function App() {
       }
     } catch (err) {
       // 靜態fallback
-      setAiReport("未能動態取得 AI 報告。");
+      setAiReport("未能取得量化估值報告。");
     } finally {
       setGeneratingReport(false);
     }
@@ -765,7 +765,7 @@ export default function App() {
             <h1 className={`text-lg font-bold tracking-tight flex items-center gap-2 ${
               theme === "dark" ? "text-white" : "text-slate-800"
             }`}>
-              台股 100 大企業 Rule 1 估值 AI 報告系統
+              台股 100 大企業 Rule 1 量化估值系統
               <span className={`text-xs font-normal px-2.5 py-0.5 rounded-full border ${
                 theme === "dark" 
                   ? "bg-slate-800 text-teal-400 border-teal-500/20" 
@@ -860,7 +860,7 @@ export default function App() {
             </div>
           </div>
           <p className={`text-xs mb-3 leading-relaxed ${theme === "dark" ? "text-slate-400" : "text-slate-500"}`}>
-            💡 <strong>使用說明</strong>：此 Python 應用程式能動態調用 <code className="text-teal-555 font-mono">yfinance</code> 來拉取今日股市現價，並結合大盤數據算足複合 CAGR，在終端互動運行，一鍵即可觸發 OpenAI 報告並在本地建立資料夾儲存。請透過 OPENAI_API_KEY 環境變數提供 API key；未設定時使用本機模板。
+            💡 <strong>使用說明</strong>：此 Python 程式透過 <code className="text-teal-555 font-mono">yfinance</code> 取得股價與財務數據，計算 Rule 1 估值並在本機儲存量化報告，無需 AI API key。
           </p>
           <pre className={`p-4 rounded-lg overflow-x-auto text-[11px] font-mono border max-h-48 scrollbar-thin ${
             theme === "dark" 
@@ -1407,7 +1407,7 @@ export default function App() {
                   {isCustomMode ? (
                     <div className="space-y-4">
                       <p className={`text-[10.5px] leading-relaxed font-light ${theme === "dark" ? "text-slate-400" : "text-slate-550"}`}>
-                        💡 當前正以 <span className="font-semibold text-teal-400">自訂模式</span> 計算：調整下方 EPS、年預估成長率或未來本益比，系統將即時在上方產出對應的 Sticker Price 與 MOS 價格，並同步連動至全域與 AI 專家研報！
+                        💡 當前正以 <span className="font-semibold text-teal-400">自訂模式</span> 計算：調整下方 EPS、年預估成長率或未來本益比，系統將即時在上方產出對應的 Sticker Price 與 MOS 價格，並同步更新量化報告。
                       </p>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2594,7 +2594,7 @@ export default function App() {
                     <h3 className={`text-xs font-bold uppercase tracking-wider ${
                       theme === "dark" ? "text-slate-200" : "text-slate-700"
                     }`}>
-                      OpenAI 專家 AI 估值分析報告
+                      Rule 1 量化估值報告
                     </h3>
                   </div>
 
@@ -2654,7 +2654,7 @@ export default function App() {
                         className="mt-4 px-4 py-2 border rounded-xl text-xs font-semibold hover:opacity-90 transition-all font-semibold"
                         style={{ background: "rgba(20,184,166,0.1)", borderColor: "rgba(20,184,166,0.3)", color: "rgb(20,184,166)" }}
                       >
-                        ⚡ 點擊動態生成專屬 AI 專家投資報告
+                        ⚡ 點擊產生 Rule 1 量化估值報告
                       </button>
                     </div>
                   )}
@@ -2674,7 +2674,7 @@ export default function App() {
                       onClick={() => generateAIReport(selectedValuation)}
                       className="text-teal-600 hover:opacity-85 font-semibold cursor-pointer"
                     >
-                      🔄 重新生成 AI 報告
+                      🔄 重新產生量化報告
                     </button>
                   )}
                 </div>
@@ -2689,7 +2689,7 @@ export default function App() {
               <TrendingUp className="h-12 w-12 text-slate-400 mb-4 opacity-50" />
               <h3 className={`font-bold text-base ${theme === "dark" ? "text-slate-300" : "text-slate-700"}`}>待機就緒</h3>
               <p className="text-xs text-slate-400 max-w-xs mt-2.5">
-                請點擊左側列表內台灣 100 大市值個股，或者在上方搜尋框中輸入任意台美股，即可在右側檢閱自動化估值、圖表對照與 AI 專家報告。
+                請點擊左側列表內台灣 100 大市值個股，或者在上方搜尋框中輸入任意台美股，即可在右側檢閱自動化估值、圖表對照與量化報告。
               </p>
             </div>
           )}
@@ -2704,7 +2704,7 @@ export default function App() {
       }`}>
         <div className="max-w-4xl mx-auto space-y-3">
           <p className="font-semibold leading-relaxed">
-            📊 台股 100 大企業 Rule 1 自動化估值與 AI 報告生成系統 ── 精準量化財務演算大師
+            📊 台股 100 大企業 Rule 1 自動化估值與量化報告系統
           </p>
           <p className="text-[11px] leading-relaxed max-w-2xl mx-auto font-light">
             免責聲明：本量化報告與分析均採用 Phil Town 《Rule 1 投資法》之數學模型公式演算，報告內容對接上下文自動生成，不構成任何明確投資倡議或推薦。金融市場有風險，投資需自行詳閱財報並理性裁量。
@@ -2712,7 +2712,7 @@ export default function App() {
           <div className="pt-4 border-t border-slate-55/10 text-[10px] text-slate-400 flex justify-center gap-4 font-light">
             <span>伺服器：Node.js Express + TSX 核心</span>
             <span>前端：React 19 + Tailwind v4 + Lucide Icons</span>
-            <span>AI 專家：OpenAI（預設 gpt-6-luna）</span>
+            <span>報告：Rule 1 公式計算，無需 AI API key</span>
           </div>
         </div>
       </footer>

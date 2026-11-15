@@ -1,11 +1,8 @@
-import "dotenv/config";
 import express, { Request, Response } from "express";
 import path from "path";
 import dns from "dns";
-import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import yahooFinance from "yahoo-finance2";
-import OpenAI from "openai";
 import { TAIWAN_100_CONSTITUENTS } from "./src/taiwan100Data.ts";
 import { SP500_200_CONSTITUENTS } from "./src/sp500Data.ts";
 
@@ -26,29 +23,10 @@ const yahooFinanceInstance = new (YahooFinanceClass as any)({
   validation: { logErrors: false }
 });
 
-// 延遲初始化，讓未設定 API key 時仍可使用本機量化報告。
-let aiInstance: OpenAI | null = null;
-function getOpenAI(): OpenAI {
-  if (!aiInstance) {
-    const key = process.env.OPENAI_API_KEY;
-    if (!key) {
-      throw new Error("OPENAI_API_KEY is not set or empty in environment.");
-    }
-    aiInstance = new OpenAI({ apiKey: key });
-  }
-  return aiInstance;
-}
-
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
-
-// 確保報告資料夾存在
-const reportsDir = path.join(process.cwd(), "Rule1_Reports");
-if (!fs.existsSync(reportsDir)) {
-  fs.mkdirSync(reportsDir, { recursive: true });
-}
 
 /**
  * 依據 Phil Town 家族的 Rule #1 中 Danielle 實際採用的「四大關鍵量化成長指標」(The Big Four Growth Rates)
@@ -1061,7 +1039,7 @@ app.post("/api/analyze", async (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/report", async (req: Request, res: Response) => {
+app.post("/api/report", (req: Request, res: Response) => {
   const { valuation } = req.body;
   if (!valuation || !valuation.symbol) {
      res.status(400).json({ success: false, error: "請提供正確的 Rule 1 計算參數" });
@@ -1089,6 +1067,7 @@ app.post("/api/report", async (req: Request, res: Response) => {
     bigFiveMetrics,
     technicalTools
   } = valuation;
+  const currency = symbol.endsWith(".TW") ? "NT$" : "$";
 
   const isCap1cEnabled = cap15 !== false;
   const growthLimitExplanation = isCap1cEnabled 
@@ -1132,9 +1111,9 @@ app.post("/api/report", async (req: Request, res: Response) => {
   const valTableStr = `### 💰 核心三大估價模型對照 (Phil Town Standard)
 | 估價方式 | 計算原理與細節 | 計算結果 | 狀態 / 決策判斷 |
 |---|---|---|---|
-| **A. 安全邊際估價 (Margin of Safety)** | 預估 10 年 ${adoptedGrowth * 100}% 成長，折現率 15%，打 5 折 | 標價 (Sticker): **NT$ ${stickerPrice.toFixed(2)} 元** <br>安全價 (MOS): **NT$ ${mosPrice.toFixed(2)} 元** | **現價 ${currentPrice.toFixed(2)} 元** (${status}) |
-| **B. 十倍資金回收法 (Ten Cap Price)** | 實質股東盈餘 (Owner Earnings) × 10 倍收回 | 實質盈餘/股: **NT$ ${tenCap?.ownerEarningsPerShare.toFixed(2)} 元** <br>Ten Cap 買進價: **NT$ ${tenCap?.tenCapPrice.toFixed(2)} 元** | ${currentPrice <= (tenCap?.tenCapPrice || 0) ? "🟢 具備吸引力 (現價低於 Ten Cap)" : "🟡 保守 (現價高於 Ten Cap)"} |
-| **C. 回本時間法 (Payback Time)** | FCF 以 ${adoptedGrowth * 100}% 逐年複利加總直到等於現價 | 預估自由現金流/股: **NT$ ${paybackTime?.freeCashFlowPerShare.toFixed(2)} 元** <br>回本年數: **${paybackTime?.paybackTimeYears} 年** | **${paybackTime?.paybackStatus}** (準則：≤ 8 年為超值) |
+| **A. 安全邊際估價 (Margin of Safety)** | 預估 10 年 ${adoptedGrowth * 100}% 成長，折現率 15%，打 5 折 | 標價 (Sticker): **${currency} ${stickerPrice.toFixed(2)} 元** <br>安全價 (MOS): **${currency} ${mosPrice.toFixed(2)} 元** | **現價 ${currentPrice.toFixed(2)} 元** (${status}) |
+| **B. 十倍資金回收法 (Ten Cap Price)** | 實質股東盈餘 (Owner Earnings) × 10 倍收回 | 實質盈餘/股: **${currency} ${tenCap?.ownerEarningsPerShare.toFixed(2)} 元** <br>Ten Cap 買進價: **${currency} ${tenCap?.tenCapPrice.toFixed(2)} 元** | ${currentPrice <= (tenCap?.tenCapPrice || 0) ? "🟢 具備吸引力 (現價低於 Ten Cap)" : "🟡 保守 (現價高於 Ten Cap)"} |
+| **C. 回本時間法 (Payback Time)** | FCF 以 ${adoptedGrowth * 100}% 逐年複利加總直到等於現價 | 預估自由現金流/股: **${currency} ${paybackTime?.freeCashFlowPerShare.toFixed(2)} 元** <br>回本年數: **${paybackTime?.paybackTimeYears} 年** | **${paybackTime?.paybackStatus}** (準則：≤ 8 年為超值) |
 `;
 
   // 進出場訊號 Markdown
@@ -1143,19 +1122,16 @@ app.post("/api/report", async (req: Request, res: Response) => {
 |---|---|---|---|
 | **MACD** | (8-17-9) 趨勢與動能 | 數值: **${technicalTools?.macdValue}** | ${technicalTools?.macdSignal} |
 | **Stochastic (KD)** | (14-5) 超買超賣指標 | K 值: **${technicalTools?.stochasticK}** / D 值: **${technicalTools?.stochasticD}** | ${technicalTools?.stochasticSignal} |
-| **均線 (MA)** | 10-day 趨勢生命線 | 10MA: **NT$ ${technicalTools?.ma10Value} 元** | ${technicalTools?.maSignal} |
+| **均線 (MA)** | 10-day 趨勢生命線 | 10MA: **${currency} ${technicalTools?.ma10Value} 元** | ${technicalTools?.maSignal} |
 | **🚦 三合一聯動訊號** | 須三者信號皆同向發出才採取進出場操作 | **${technicalTools?.overallSignal}** | ${technicalTools?.overallSignal.includes("買進") ? "🚩 建議配合 MOS 價格分批佈局" : technicalTools?.overallSignal.includes("賣出") ? "⚠️ 注意出場防守訊號" : "⚖️ 保持觀望，與大戶同行"} |
 `;
 
-  const apiKeyToCheck = process.env.OPENAI_API_KEY || "";
-  // 如果沒有設置金鑰，直接回傳最完整的 Phil Town 特設量化報告
-  if (!apiKeyToCheck || apiKeyToCheck === "MY_OPENAI_API_KEY") {
-    const staticText = `## 📊 ${symbol} (${name}) Rule 1 投資人 Agent 專家報告 (市場：${symbol.endsWith(".TW") ? "台股" : "美股"})
+  const staticText = `## 📊 ${symbol} (${name}) Rule 1 量化估值報告 (市場：${symbol.endsWith(".TW") ? "台股" : "美股"})
 
-> ⚖️ **投資指南**：未設定 OPENAI_API_KEY，本報告由本機量化模板產出；定性分析需自行查證。
+> ⚖️ **投資指南**：本報告依輸入數據與 Rule 1 公式計算，不使用 AI。歷史數據及定性判斷請自行查證。
 
 ### 📌 【第一 M】企業意義 (Meaning) 一百載持有考量
-* 該公司的業務模式是否單純易懂？你是否願意不看盤持有 100 年並作為家人的唯一經濟依靠？這檔股票在當前數位/實體產業占有率極高，業務黏著度極強，符合 Meaning 審查標準。
+* 請自行確認公司的業務模式、客戶需求及長期競爭力；本報告沒有足夠資料判定企業意義。
 
 ### 📌 【第二 M與檢驗】護城河驗證 (Moat) 與五大關鍵數字
 * 穩固、具備持久特性的護城河是價值之本。Phil Town 五大關鍵數據要求 10 年內平均成長率皆維持 ≥ 10%，並且長期債務能在 1 到 3 年內盈餘償清。
@@ -1163,13 +1139,13 @@ ${bigFiveTableStr}
 ${bigFourTableStr}
 
 ### 📌 【第三 M】管理層審查 (Management)
-* 執行長是否具備足夠誠信、對事業懷抱熱情，並且是以股東最大權益為導向？本分析透過 ROIC 的穩定性 (平均超過 10%) 來間接驗證管理層資金運用效率極其優良。
+* ROIC 可作為資本運用效率的量化線索，無法單憑此數據判定管理層誠信或股東導向。
 
 ### 📌 【第四 M、三大估 valuation 算式】安全邊際與估值對照 (Margin of Safety & Multi-Valuation)
 ${valTableStr}
 
 ### 🚦 當前技術面進場訊號與紀律 (The Three Tools)
-* 即便價格跌破了 MOS 安全邊際價，仍應以技術面三大工具進行確認，與「市場大戶」同步進出場，避開不見底的飛刀。
+* 技術指標僅供參考，不能保證進出場時機或市場參與者的動向。
 ${techTableStr}
 
 ### 🧠 Phil Town 給用戶的精選行為建議 (Rules of Thumb)
@@ -1180,184 +1156,7 @@ ${techTableStr}
 ---
 *免責聲明：本報告依據 Phil Town Rule #1 量化公式與歷史公開數據運算產生，不代表任何形式之投資招攬，過往數據不保證未來回報。*
 `;
-    res.json({ success: true, report: staticText, static: true });
-    return;
-  }
-
-  try {
-    const isCap1cEnabled = cap15 !== false;
-    const marketPrefix = symbol.endsWith(".TW") ? "NT$" : "$";
-    const curPriceStr = (currentPrice || 0).toFixed(2);
-    const stickPriceStr = (stickerPrice || 0).toFixed(2);
-    const mosPriceStr = (mosPrice || 0).toFixed(2);
-    const statusValStr = status || "🟡 合理";
-    const calculatedCagrStr = ((cagr || 0) * 100).toFixed(2) + "%";
-    const adoptedGrowthStr = ((adoptedGrowth || 0) * 100).toFixed(2) + "%";
-    const ttmEpsStr = (trailingEps || 0).toFixed(2);
-
-    const context = {
-      symbol,
-      name,
-      currentPrice: `${marketPrefix} ${curPriceStr}`,
-      trailingEps: `${marketPrefix} ${ttmEpsStr}`,
-      calculated_cagr: calculatedCagrStr,
-      adopted_growth: adoptedGrowthStr,
-      sticker_price: `${marketPrefix} ${stickPriceStr}`,
-      mos_price: `${marketPrefix} ${mosPriceStr}`,
-      valuation_status: statusValStr,
-      bigFiveTableStr,
-      bigFourTableStr,
-      valTableStr,
-      techTableStr,
-    };
-
-    const prompt = `你是一位精通 Phil Town Rule 1 投資法與巴菲特價值投資邏輯的首席量化分析師 Agent。
-請為這檔股票撰寫一份深度、極具專業法人與 Phil Town Rule 1 規範的完整投資人分析與決策報告。
-
-【🔥 絕對紅線規範 - 必須嚴格遵守】
-1. 報告中所有的數據、價格、EPS、CAGR、採用成長率、三大估價（MOS, Ten Cap, Payback Time）、三大技術工具信號等，都「必須」與下方提供的真實數據完全一致！
-2. 絕對不允許進行任何與下方真實數據不符的編造（例如：不准隨意猜測股價或修改算式結果）。
-3. 只能利用下方已經為您預置好精準數值的 Markdown 塊，禁止修改表格與對照表的數值，必須保持一模一樣。
-4. 請專注在深入分析 Phil Town 的「四 M 理論」：
-   - 【Meaning 企業意義】：探討該業務是否讓人秒懂？是否願意持有 100 年不賣？
-   - 【Moat 護城河驗證】：解讀五大關鍵數據（ROIC, 營收, EPS, 帳面價值, FCF 成長率）與其長期債務能在 1-3 年償還的穩健度。
-   - 【Management 管理層】：從資金分配 ROIC 及長期績效探討執行長對事業與股東的忠誠度。
-   - 【Margin of Safety 安全邊際與估值】：詮釋 A. 安全邊際法、B. 十倍資金回收(Ten Cap)、C. 回本時間(Payback Time) 三種估價結果的保守度，以最保守者為決策定盤星。
-5. 融入 Phil Town 給投資人的「三大技術工具信號 (The Three Tools)」及「三大行為建議 (10-10 Rule, 4 Tranches分批, 出場原則)」。
-6. 直接輸出符合格式要求的 Markdown，不要帶有任何多餘碎嘴、問候，直接以標題 "##" 開始。
-
-真實數據：
-- 股票代碼：${context.symbol}
-- 股票名稱：${context.name}
-- 當前股價：${context.currentPrice} 元
-- 近四季累積 EPS (TTM)：${context.trailingEps} 元
-- 歷史可用年限 (最長10年) EPS 估算 CAGR：${context.calculated_cagr}
-- 採用成長率：${context.adopted_growth}
-- 標價 (Sticker Price)：${context.sticker_price} 元
-- 安全邊際價 (MOS Price)：${context.mos_price} 元
-- 估值狀態判定：${context.valuation_status}
-
-直接按照以下指定的 Markdown 格式與預填好的數值輸出報告：
-
-## 📊 ${context.symbol} (${context.name}) Rule 1 投資人 Agent 專家報告 (市場：${symbol.endsWith(".TW") ? "台股" : "美股"})
-
-### 💡 核心結論 (Pyramid Principle)
- * **決策結論**：目前 ${context.name} (${context.symbol}) 的市場股價為 **${context.currentPrice} 元**，而合理內在價值 (Sticker Price) 為 **${context.sticker_price} 元**。目前安全邊際買進價為 **${context.mos_price} 元**。該股當前的價格判定處於『**${context.valuation_status}**』區間。
- * **對應策略**：[請結合三大估值法與技術分析，给出這個狀態下具備 Phil Town 特色的操作策略。說明是否到達買入、觀望、或減碼點。]
-
-### 📌 【第一 M】企業意義 (Meaning) 一百載考量
-* [深度剖析 ${context.name} (${context.symbol}) 之核心業務範疇。探討其業務是否足夠單純、穩健到可以讓你安心「持有 100 年並作為全家人的依靠」？]
-
-### 📌 【第二 M】護城河驗證 (Moat) 與「五大關鍵數據」
-* 護城河是否寬廣且難以跨越？讓我們透過 10 年「五大關鍵數據 (ROIC / Sales / EPS / Equity / FCF)」及長期債務健康度來佐證。
-${context.bigFiveTableStr}
-${context.bigFourTableStr}
-
-### 📌 【第三 M】管理層高度誠信與股東回報 (Management)
-* [結合理事會/執行長在資金運用效率（例如 ROIC 水平）與股東導向之表現進行評論。探討管理層是否具備卓越的資本配置能力、對事業極致熱愛、且具備極高誠信（Owner-oriented)？]
-
-### 📌 【第四 M、三大估 valuation 算式】安全邊際與估值對照 (Margin of Safety & Multi-Valuation)
-* 估算「標價」(Sticker Price) 特以 MARR 15% (即 10 年內資產翻倍兩次) 計算折現。同時列出十倍資金回收與回本時間法對比：
-${context.valTableStr}
-* **估值解讀**：[請探討三種估值方法的意義。為甚麼以最保守者為本，能最大化規避黑天鵝？]
-
-### 🚦 三大技術工具進出場判斷與量能同步 (The Three Tools)
-* [說明在買進符合 MOS 安全邊際的股票時，如何運用 MACD, KD(Stochastic) 與 10-day MA 三合一指標判定進場時機，以保證與市場大機構、法人大戶同向聯動？]
-${context.techTableStr}
-
-### 🧠 Phil Town 給用戶的行為建議與紀律守則 (Rules of Thumb)
-1. **10-10 規則**：「如果你不打算持有一家公司 10 年，就不要持有它 10 分鐘」。不為短暫繁華而買，僅為長久價值守候。
-2. **分批買入原則（4 Tranches）**：分析師建議將投資本金分成 **4 等份（4 Tranches）**。一旦價格滑入安全價 MOS 以下，在不同的支撐線分批佈局。
-3. **撤退訊號防護**：若 (1) 公司的護城河被破壞，(2) 管理層失去誠信，或 (3) 股價上漲超越合理標價 (Sticker Price) 20% 以上時，應觸發利潤回攏與避險出場。
-`;
-
-    const ai = getOpenAI();
-    const response = await ai.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-6-luna",
-      input: prompt,
-    });
-
-    const reportMarkdown = response.output_text?.trim() || "";
-    if (!reportMarkdown) throw new Error("OpenAI returned an empty report");
-
-    // 同步將報告寫入 Rule1_Reports 目錄下作為存檔備份
-    const sanitizedSymbol = symbol.replace(/[^a-zA-Z0-9.]/g, "_");
-    const filePath = path.join(reportsDir, `${sanitizedSymbol}_Rule1_Report.md`);
-    fs.writeFileSync(filePath, reportMarkdown, "utf-8");
-
-    res.json({ success: true, report: reportMarkdown, static: false });
-  } catch (error: any) {
-    console.error("OpenAI report failed:", error?.status || error?.code || error?.name || "unknown error");
-    
-    const isCap1cEnabled = cap15 !== false;
-    const growthLimitExplanation = isCap1cEnabled 
-      ? "經 Rule 1 天花板限制 (上限15%, 下限1%) 後的預測增長率" 
-      : "保留潛力無上限限制 (下限1%) 之歷史複合年成長率";
-    
-    // 預先處理好所有的變數格式化以確保 100% 的編譯安全
-    const marketPrefix = symbol.endsWith(".TW") ? "NT$" : "$";
-    const marketTypeStr = symbol.endsWith(".TW") ? "台股" : "美股";
-    const curPriceStr = (currentPrice || 0).toFixed(2);
-    const stickPriceStr = (stickerPrice || 0).toFixed(2);
-    const mosPriceStr = (mosPrice || 0).toFixed(2);
-    const statusValStr = status || "🟡 合理";
-    const calculatedCagrStr = ((cagr || 0) * 100).toFixed(2) + "%";
-    const adoptedGrowthStr = ((adoptedGrowth || 0) * 100).toFixed(2) + "%";
-    const isCapLimitExplanation = isCap1cEnabled ? "已啟用 15% 上限限制" : "已關閉 15% 成長天花板限制";
-    const epsTracks = (historicalEpsList || []).map((x: number) => typeof x === 'number' ? x.toFixed(2) : String(x)).join(", ");
-    const ttmEpsStr = (trailingEps || 0).toFixed(2);
-    const currentPeStr = (pe || 0).toFixed(2);
-    const futurePeStr = (futurePe || 0).toFixed(2);
-    const futureEpsStr = (futureEps10y || 0).toFixed(2);
-    const adoptedGrowthPct = ((adoptedGrowth || 0) * 100).toFixed(1) + "%";
-    
-    // Fallback: 產生量化估值報告作為自適應備份
-    const fallbackReport = `## 📊 ${symbol} (${name}) Rule 1 估值報告 (市場：${marketTypeStr})
-
-> 💡 **分析導航**：OpenAI 報告產生失敗（${error?.status === 401 ? "API key 無效" : error?.status === 429 ? "額度不足或請求過多" : "API 暫時不可用或回傳空內容"}），已改用本機量化模板。請自行核對數據與定性判斷。
-
-### 💡 核心結論 (Pyramid Principle)
-* **結論**：目前 ${name} (${symbol}) 市值報價為 **${marketPrefix} ${curPriceStr} 元**，而經由 Rule 1 計算之合理內在價值 (Sticker Price) 為 **${marketPrefix} ${stickPriceStr} 元**。該股當前的收盤價判定處於『**${statusValStr}**』區間。
-* **關鍵理由**：歷史年度 Basic EPS 的 4 年複合年化成長率 (CAGR) 為 **${calculatedCagrStr}**。依 Rule 1 規範限制作為預測的採用成長率為 **${adoptedGrowthStr}** (${isCapLimitExplanation}).
-* **投資建議**：
-  若目前處於 **🔴 偏高** 區間，說明市場買氣熱絡，估值溢價過高，在 Rule 1 投資法下應保持耐心，等待更佳定價；若處於 **🟢 低估** 區關，則代表進入安全邊際，應立刻對該公司是否具有強韌護城河（如專利、高轉換成本、網絡效應）以及頂尖管理層進行深度覆核。
-
-### ⚠️ 數據確信度與異常警示
-* 歷史 EPS 軌跡為：[${epsTracks}]。
-* 數據確信度評估：**【高】**。歷史年度盈餘數據經 TAIWAN 100 與 Yahoo Real-time 財經庫雙重檢驗，盈餘成長路徑清晰，具備高度估值參照價值。
-
-${bigFourTableStr}
-
-### 1. 輸入參數與數據驗證
-| 參數 | 數值 | 說明 |
-|---|---|---|
-| 當前股價 (Current Price) | ${marketPrefix} ${curPriceStr} | 即時市場交易價格 |
-| 近四季累積 EPS (TTM) | ${marketPrefix} ${ttmEpsStr} | 實時獲利基礎底線 |
-| 歷史 EPS 估算 CAGR | ${calculatedCagrStr} | 歷史基本 EPS 的複合成長率 |
-| 採用成長率 (Adopted Growth) | ${adoptedGrowthStr} | ${growthLimitExplanation} |
-| 當前本益比 (Current PE) | ${currentPeStr} 倍 | 市場當下給予的評價倍數 |
-| 未來預估本益比 (Future PE) | ${futurePeStr} 倍 | 本益比 = min(當前PE, 採用成長率 * 200)，且下限15(若計算<8) |
-
-### 2. 計算過程
- * **未來 10 年 EPS** = ${marketPrefix} ${futureEpsStr} 元 (採用 ${adoptedGrowthPct} 成長率複利 10 年)
- * **未來 PE** = ${futurePeStr} 倍
- * **Sticker Price (合理價)** = ${marketPrefix} ${stickPriceStr} 元 (折現率固設定為 15%)
- * **MOS Price (安全邊際價)** = ${marketPrefix} ${mosPriceStr} 元 (Sticker Price * 50%)
-
-### 3. 估值結論
-| 指標 | 數值 | 估值判斷 |
-|---|---|---|
-| 合理估值 (Sticker Price) | ${marketPrefix} ${stickPriceStr} 元 | Rule 1 中預估的實質價值天花板 |
-| 安全邊際價 (MOS Price) | ${marketPrefix} ${mosPriceStr} 元 | Rule 1 理物理想買點 (50% 打折) |
-| 當前收盤價 (Current Price) | ${marketPrefix} ${curPriceStr} 元 | 目前市場實際股價 |
-| **估值綜合判定** | **${statusValStr}** | 決策 |
-
-### 🔗 數據來源與免責聲明
- 1. 臺灣證券交易所 / Yahoo Finance API 實時財報庫
- 2. 說明：本報告基於 Rule 1 投資法之公式自動化計算，不構成任何實質買賣招攬，投資人應自行審慎評估風險。
-`;
-    res.json({ success: true, report: fallbackReport, static: true });
-  }
+  res.json({ success: true, report: staticText, static: true });
 });
 
 // ---------------- VITE MIDDLEWARE SETUP ----------------

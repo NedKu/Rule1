@@ -1,6 +1,6 @@
 {
-  "name": "台股與美股Rule 1 估值 AI 報告系統",
-  "description": "提供台股與美股企業 Rule 1 自動化估值儀表板與即時個股分析，整合 OpenAI 自動生成深度專家投資評估報告。",
+  "name": "台股與美股 Rule 1 量化估值系統",
+  "description": "提供台股與美股企業 Rule 1 自動化估值儀表板、即時個股分析與公式產生的量化報告。",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
